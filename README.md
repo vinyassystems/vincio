@@ -72,6 +72,8 @@ Bash
 git clone [https://github.com/vinyassystems/vincio.git](https://github.com/vinyassystems/vincio.git)
 Navigate into the Project Folder
 
+Navigate into the Project Folder
+
 Bash
 cd vincio
 Install Dependencies
@@ -91,11 +93,5 @@ Plaintext
 http://localhost:8000
 Enter your admin password in the terminal prompt when initializing, and your workspace is fully live!
 
-📂 Project Structure
-Plaintext
-vincio/
-├── public/           # Frontend client UI assets and styling
-├── server.js         # Core backend, Express routing, and WebSocket sync
-├── package.json      # Dependencies and project configuration
-├── LICENSE           # MIT open-source license
-└── README.md         # Comprehensive documentation
+
+
