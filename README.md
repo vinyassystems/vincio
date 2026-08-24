@@ -56,41 +56,27 @@ Before downloading and running Vincio, ensure your system has the following inst
 
 ### Step-by-Step Installation
 
-1. **Clone the Repository**
-   Open your terminal and clone the repository from your VSA GitHub account:
-   ```bash
-   git clone [https://github.com/vinyassystems/vincio.git](https://github.com/vinyassystems/vincio.git)
-
-
-
-
-Step-by-Step Installation
-Clone the Repository
-Open your terminal and clone the repository from your VSA GitHub account:
-
-Bash
-git clone [https://github.com/vinyassystems/vincio.git](https://github.com/vinyassystems/vincio.git)
-Navigate into the Project Folder
-
-Navigate into the Project Folder
-
-Bash
-cd vincio
-Install Dependencies
-Install the required Node.js backend and WebSocket dependencies:
-
-Bash
-npm install
-Start the Application Server
-Launch your server:
-
-Bash
-npm start
-Access the Workspace
-Open your web browser and navigate to the local server address:
-
-Plaintext
-http://localhost:8000
+Clone the repository
+```bash
+   git clone https://github.com/vinyassystems/vincio.git
+   ```
+Navigate into the project folder
+```bash
+   cd vincio
+   ```
+Install dependencies
+```bash
+   npm install
+   ```
+Start the application server
+```bash
+   npm start
+   ```
+Access the workspace
+Open your web browser and navigate to:
+```
+   http://localhost:8000
+   ```
 Enter your admin password in the terminal prompt when initializing, and your workspace is fully live!
 
 
