@@ -8,6 +8,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
+const os = require('os');
 
 const app = express();
 const server = http.createServer(app);
@@ -42,7 +43,35 @@ const activeUsers = {};
 const activeAiStreams = {};
 let guestCounter = 1;
 let currentCloudflareLink = "Waiting for tunnel...";
-let sessionAdminPassword = "ADMIN_PASSWORD";
+
+// --- Persistent Config Setup for Password & Local System Username ---
+const CONFIG_PATH = path.join(__dirname, '.vincio-config.json');
+let sessionAdminPassword = "";
+let adminUsername = os.userInfo().username;
+
+function initServerStartup() {
+    if (fs.existsSync(CONFIG_PATH)) {
+        try {
+            const configData = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+            sessionAdminPassword = configData.password;
+            if (configData.username) adminUsername = configData.username;
+            console.log(`[VSA] Loaded saved configuration for admin: ${adminUsername}`);
+            bootUpApp();
+            return;
+        } catch (e) {
+            console.log("[VSA] Config file corrupted, prompting again...");
+        }
+    }
+
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(`\n🔒 Create an Admin Password for this Vincio session (${adminUsername}): `, (answer) => {
+        sessionAdminPassword = answer.trim() || "admin123";
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify({ password: sessionAdminPassword, username: adminUsername }, null, 2));
+        console.log(`\n✅ Password set and saved locally successfully!`);
+        rl.close();
+        bootUpApp();
+    });
+}
 
 async function getLocalOllamaModels() {
     try {
@@ -72,6 +101,11 @@ function buildFileTree(dir) {
     }
     return result;
 }
+
+// Expose current user info to frontend
+app.get('/api/user', (req, res) => {
+    res.json({ username: adminUsername });
+});
 
 io.on('connection', (socket) => {
     activeUsers[socket.id] = { id: socket.id, name: `Guest-${guestCounter++}`, role: 'guest' };
@@ -117,7 +151,7 @@ io.on('connection', (socket) => {
     socket.on('authenticate', (token, callback) => {
         if (token === sessionAdminPassword) { 
             activeUsers[socket.id].role = 'admin';
-            activeUsers[socket.id].name = 'Vinyas (Admin)';
+            activeUsers[socket.id].name = `${adminUsername} (Admin)`;
             io.emit('user-list', Object.values(activeUsers)); 
             callback({ success: true });
         } else {
@@ -204,7 +238,9 @@ io.on('connection', (socket) => {
 
             const target = queue[i];
             socket.emit('omnirouter-status', `⚡ Processing via [${target.name}]`);
-            const client = new OpenAI({ baseURL: target.baseUrl, apiKey: target.apiKey, timeout: 5000 });
+            
+            // Increased timeout to 60 seconds so local models don't time out
+            const client = new OpenAI({ baseURL: target.baseUrl, apiKey: target.apiKey, timeout: 60000 });
             
             try {
                 const stream = await client.chat.completions.create({
@@ -233,6 +269,7 @@ io.on('connection', (socket) => {
                     break; 
                 }
             } catch (err) {
+                console.error(`[AI Error] [${target.name}] Failed:`, err.message);
                 socket.emit('omnirouter-status', `⚠️ [${target.name}] Failed: ${err.message}. Trying next...`);
             }
         }
@@ -246,7 +283,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// Automatic background file watcher to sync saved changes instantly
 chokidar.watch(process.cwd(), { ignored: /node_modules|\.git|vincio_shared|\.DS_Store/ }).on('change', (filePath) => {
     try {
         if (filePath.endsWith('.js') || filePath.endsWith('.py') || filePath.endsWith('.html') || filePath.endsWith('.css') || filePath.endsWith('.json')) {
@@ -261,21 +297,27 @@ ptyProcess.onData((data) => {
 });
 
 const PORT = 8000;
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
-rl.question('\n🔒 Create an Admin Password for this Vincio session: ', (answer) => {
-    if (answer.trim()) sessionAdminPassword = answer.trim();
-    console.log(`\n✅ Password set successfully!`);
-    
+function bootUpApp() {
     server.listen(PORT, () => {
-        console.log(`Vincio live at http://localhost:${PORT}`);
-        const cloudflare = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${PORT}`]);
-        cloudflare.stderr.on('data', (data) => {
-            const match = data.toString().match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
-            if (match) {
-                currentCloudflareLink = match[0];
-                console.log(`[AUTO-HOST] Public Link: ${currentCloudflareLink}\n`);
-            }
-        });
+        console.log(`✅ Vincio live at http://localhost:${PORT} (Admin User: ${adminUsername})`);
+        
+        try {
+            const cloudflare = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${PORT}`]);
+            cloudflare.stderr.on('data', (data) => {
+                const match = data.toString().match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
+                if (match) {
+                    currentCloudflareLink = match[0];
+                    console.log(`[AUTO-HOST] Public Link: ${currentCloudflareLink}\n`);
+                }
+            });
+            cloudflare.on('error', () => {
+                console.log(`[NOTICE] Cloudflare tunnel skipped (cloudflared not installed). Running locally.`);
+            });
+        } catch (e) {
+            console.log(`[NOTICE] Cloudflare tunnel skipped.`);
+        }
     });
-});
+}
+
+initServerStartup();

@@ -44,6 +44,12 @@
     
     details > summary { list-style: none; }
     details > summary::-webkit-details-marker { display: none; }
+
+    #agent-model-select option {
+      background-color: #13131b !important;
+      color: #ffffff !important;
+      padding: 10px;
+    }
   </style>
 </head>
 <body class="flex h-screen w-screen font-sans antialiased text-[#e4e1ed] select-none">
@@ -117,7 +123,7 @@
         </div>
       </div>
 
-      <!-- 2. CODE ENGINE VIEW (Includes Terminal Instructions) -->
+      <!-- 2. CODE ENGINE VIEW -->
       <div id="view-code" class="w-full h-full flex-col relative p-6 pb-24" style="display: none;">
         <div class="flex-1 flex gap-4 min-h-0 w-full h-full relative overflow-hidden">
             <div class="flex-1 min-w-0 bg-bg-panel border border-bg-lighter rounded-xl flex flex-col overflow-hidden shadow-2xl">
@@ -125,7 +131,7 @@
                     <span class="flex items-center gap-2"><span class="material-symbols-outlined text-sm">code</span> live_workspace.code</span>
                     <span class="text-[10px] text-accent">AI & Terminal Auto-Sync Active</span>
                 </div>
-                <textarea id="code-editor" class="flex-1 w-full h-full bg-transparent p-4 text-[#e4e1ed] font-code text-sm outline-none resize-none" spellcheck="false">// Codebase synced...</textarea>
+                <textarea id="code-editor" oninput="if(window.socket) window.socket.emit('code-update', this.value);" class="flex-1 w-full h-full bg-transparent p-4 text-[#e4e1ed] font-code text-sm outline-none resize-none" spellcheck="false">// Codebase synced...</textarea>
             </div>
             
             <div class="w-[450px] min-w-[300px] bg-[#000] border border-bg-lighter rounded-xl flex flex-col overflow-hidden shadow-2xl shrink-0">
@@ -133,7 +139,6 @@
                     <span>Host Terminal</span>
                     <span class="w-2 h-2 rounded-full bg-success animate-pulse"></span>
                 </div>
-                <!-- Instruction banner inside terminal panel -->
                 <div class="bg-bg-main/80 border-b border-bg-lighter px-3 py-1.5 text-[11px] font-code text-[#908fa0] flex items-center gap-1.5">
                     <span class="material-symbols-outlined text-xs text-warning">info</span>
                     Type <code class="text-accent bg-bg-lighter px-1 rounded">sync filename</code> to load files here.
@@ -217,12 +222,13 @@
     <!-- BOTTOM COMMAND BAR -->
     <div class="w-full px-8 pb-6 pt-2 bg-bg-main shrink-0 z-40 absolute bottom-0 left-0 right-0 border-t border-bg-lighter/50">
       <div class="bg-bg-panel border border-bg-lighter w-full max-w-4xl mx-auto rounded-xl p-1.5 flex items-center gap-3 shadow-2xl">
-        <div class="bg-bg-lighter text-accent font-code text-xs font-bold rounded-lg px-3 py-2.5 flex items-center gap-2 border border-gray-700">
-           <select id="agent-model-select" class="bg-transparent outline-none cursor-pointer text-white">
-             <!-- Options dynamically added via JS -->
+        <div class="bg-bg-lighter text-accent font-code text-xs font-bold rounded-lg px-2 py-2 flex items-center gap-2 border border-gray-700">
+           <select id="agent-model-select" onchange="handleModelSelectChange(this)" class="bg-transparent outline-none cursor-pointer text-white">
+             <!-- Options populated via JS -->
            </select>
         </div>
         <input type="text" id="agent-input" placeholder="Message the Team or AI Agent..." onkeypress="if(event.key === 'Enter') forceSendPrompt()" class="flex-1 bg-transparent outline-none text-sm text-white px-2 placeholder-[#908fa0]"/>
+        <button onclick="forceStopAI()" id="stop-ai-btn" class="p-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-lg font-bold text-xs hidden items-center justify-center cursor-pointer">Stop</button>
         <button onclick="forceSendPrompt()" class="p-2 bg-accent hover:bg-white text-accent-dark rounded-lg font-bold flex items-center justify-center h-[36px] w-[36px] transition-colors cursor-pointer">
           <span class="material-symbols-outlined text-[18px]">send</span>
         </button>
@@ -242,6 +248,134 @@
     try { 
         if (typeof io !== 'undefined') window.socket = io({ transports: ['websocket', 'polling'] }); 
     } catch(e) { console.error("No server running."); }
+
+    // Initialize Xterm.js Terminal inside DOMContentLoaded
+    document.addEventListener("DOMContentLoaded", () => {
+        const termContainer = document.getElementById('terminal-container');
+        if (termContainer && typeof Terminal !== 'undefined') {
+            window.term = new Terminal({
+                cursorBlinking: true,
+                theme: { background: '#000000', foreground: '#4edea3' },
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: 12
+            });
+            window.fitAddon = new FitAddon.FitAddon();
+            window.term.loadAddon(window.fitAddon);
+            window.term.open(termContainer);
+            window.fitAddon.fit();
+
+            window.term.onData((data) => {
+                if (window.socket) window.socket.emit('terminal-input', data);
+            });
+        }
+    });
+
+    if (window.socket) {
+        window.socket.on('terminal-output', (data) => {
+            if (window.term) window.term.write(data);
+        });
+
+        window.socket.on('code-update', (code) => {
+            const editor = document.getElementById('code-editor');
+            if (editor) editor.value = code;
+        });
+
+        window.socket.on('user-list', (users) => {
+            const userCountElem = document.getElementById('live-user-count');
+            if (userCountElem) userCountElem.innerText = users.length;
+            
+            const teamGrid = document.getElementById('team-grid');
+            if (teamGrid) {
+                teamGrid.innerHTML = '';
+                users.forEach(u => {
+                    teamGrid.innerHTML += `
+                        <div class="bg-bg-panel border border-bg-lighter p-4 rounded-xl flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-lg bg-accent/10 text-accent flex items-center justify-center font-bold">
+                                    ${u.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <h4 class="text-white font-bold text-sm">${u.name}</h4>
+                                    <span class="text-xs text-[#908fa0] uppercase">${u.role}</span>
+                                </div>
+                            </div>
+                            <span class="w-2.5 h-2.5 rounded-full bg-success"></span>
+                        </div>
+                    `;
+                });
+            }
+        });
+
+        window.socket.on('group-chat-receive', (data) => {
+            const chatHistory = document.getElementById('ai-chat-history');
+            if (!chatHistory) return;
+            const isMe = data.senderId === window.socket.id;
+            chatHistory.innerHTML += `
+                <div id="msg-${data.id}" class="flex flex-col ${isMe ? 'items-end' : 'items-start'} mb-3">
+                    <span class="text-[10px] text-[#908fa0] mb-1">${data.sender} (${data.role})</span>
+                    <div class="bg-bg-lighter text-white px-4 py-2.5 rounded-2xl text-sm max-w-xl font-medium shadow-md relative group">
+                        <span class="msg-text">${data.msg}</span>
+                        ${isMe ? `
+                            <div class="absolute -top-3 right-0 hidden group-hover:flex gap-1 bg-bg-main border border-bg-lighter rounded p-0.5">
+                                <button onclick="editMsg('${data.id}')" class="text-xs px-1 text-accent">Edit</button>
+                                <button onclick="deleteMsg('${data.id}')" class="text-xs px-1 text-red-400">Del</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        });
+
+        window.socket.on('msg-edited', ({ id, newMsg }) => {
+            const msgEl = document.querySelector(`#msg-${id} .msg-text`);
+            if (msgEl) msgEl.innerText = newMsg;
+        });
+
+        window.socket.on('msg-deleted', (id) => {
+            const msgEl = document.getElementById(`msg-${id}`);
+            if (msgEl) msgEl.remove();
+        });
+
+        window.socket.on('ai-response', (content) => {
+            let targetDiv = document.getElementById('current-ai-response');
+            if (!targetDiv) {
+                const chatHistory = document.getElementById('ai-chat-history');
+                const uniqueId = 'ai-' + Date.now();
+                window.currentAiMsgId = uniqueId;
+                chatHistory.innerHTML += `
+                    <div class="flex flex-col items-start mb-3">
+                        <span class="text-[10px] text-success mb-1">AI Agent / Team Hub</span>
+                        <div id="${uniqueId}" class="bg-bg-panel border border-bg-lighter text-[#e4e1ed] px-4 py-3 rounded-2xl rounded-tl-none text-sm max-w-2xl font-code shadow-md whitespace-pre-wrap"></div>
+                    </div>
+                `;
+                targetDiv = document.getElementById(uniqueId);
+                targetDiv.id = 'current-ai-response';
+            }
+            targetDiv.innerText += content;
+            const chatHistory = document.getElementById('ai-chat-history');
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        });
+
+        window.socket.on('ai-done', () => {
+            const activeAi = document.getElementById('current-ai-response');
+            if (activeAi) activeAi.id = '';
+            document.getElementById('stop-ai-btn').style.display = 'none';
+        });
+
+        window.socket.emit('request-local-models');
+        window.socket.on('local-models-list', (models) => {
+            window.localModels = models;
+            window.renderModels();
+        });
+    }
+
+    fetch('/api/user').then(res => res.json()).then(data => {
+        if(data && data.username) {
+            const profileInput = document.getElementById('profile-name-input');
+            if(profileInput && !profileInput.value) profileInput.value = data.username;
+        }
+    }).catch(err => {});
 
     window.forceSwitchView = function(viewName) {
         try {
@@ -265,6 +399,13 @@
             }
             if (viewName === 'drive' && window.socket) window.socket.emit('request-shared-files');
         } catch(err) {}
+    };
+
+    window.handleModelSelectChange = function(selectElem) {
+        if (selectElem.value === 'add_new_model_trigger') {
+            forceSwitchView('models');
+            selectElem.selectedIndex = 0;
+        }
     };
 
     window.forceUnlock = function() {
@@ -306,6 +447,8 @@
         document.getElementById('model-url').value = '';
         document.getElementById('model-key').value = '';
         window.renderModels();
+        alert("Model bound successfully!");
+        forceSwitchView('workspace');
     };
 
     window.removeCustomModel = function(name) {
@@ -320,7 +463,11 @@
         if(!grid || !select) return;
         
         grid.innerHTML = '';
-        select.innerHTML = '<option value="team_chat">👥 Team Chat</option><option value="omnirouter">⚡ OmniRouter (AI)</option>';
+        select.innerHTML = `
+            <option value="team_chat">👥 Team Chat</option>
+            <option value="omnirouter">⚡ OmniRouter (AI)</option>
+            <option value="add_new_model_trigger" style="color: #4edea3; font-weight: bold;">+ Add Custom Model...</option>
+        `;
         
         const keys = Object.keys(window.customModels);
         if (keys.length === 0) {
@@ -328,304 +475,115 @@
         } else {
             keys.forEach(name => {
                 grid.innerHTML += `
-                <div class="bg-bg-main p-4 rounded-lg flex justify-between items-center border border-bg-lighter">
-                   <div><div class="font-bold text-white text-sm">${name}</div><div class="text-[10px] text-[#908fa0] font-code truncate max-w-[200px]">${window.customModels[name].url}</div></div>
-                   <button onclick="removeCustomModel('${name}')" class="text-red-400 border border-red-400/30 text-xs font-bold px-3 py-1 rounded">Revoke</button>
+                <div class="bg-bg-main p-4 rounded-lg flex justify-between items-center border border-bg-lighter mb-2">
+                   <div>
+                       <span class="text-white font-bold">${name}</span>
+                       <span class="text-xs text-[#908fa0] block">${window.customModels[name].url}</span>
+                   </div>
+                   <button onclick="removeCustomModel('${name}')" class="text-red-400 hover:text-red-300 text-xs font-bold">Remove</button>
                 </div>`;
-                select.innerHTML += `<option value="custom:${name}">🌐 Custom: ${name}</option>`;
+                select.innerHTML += `<option value="custom:${name}">Custom: ${name}</option>`;
             });
         }
-        
-        window.localModels.forEach(m => {
-            select.innerHTML += `<option value="local:${m}">💻 Local: ${m}</option>`;
-        });
-    };
 
-    window.editMsg = function(msgId) {
-        const textContainer = document.getElementById(msgId + '-text');
-        if (!textContainer) return;
-        const currentText = textContainer.innerText;
-        const newText = prompt("Edit your message:", currentText);
-        
-        if (newText !== null && newText.trim() !== "" && newText !== currentText) {
-            textContainer.innerText = newText;
-            if(window.socket) window.socket.emit('edit-msg', { id: msgId, newText: newText });
+        if (window.localModels && window.localModels.length > 0) {
+            window.localModels.forEach(m => {
+                select.innerHTML += `<option value="local:${m}">Local: ${m}</option>`;
+            });
         }
     };
 
-    window.deleteMsg = function(msgId) {
-        if(confirm("Are you sure you want to delete this message?")) {
-            const el = document.getElementById(msgId);
-            if(el) el.remove();
-            if(window.socket) window.socket.emit('delete-msg', msgId);
+window.renderModels = function() {
+        const grid = document.getElementById('models-grid');
+        const select = document.getElementById('agent-model-select');
+        if(!grid || !select) return;
+        
+        grid.innerHTML = '';
+        select.innerHTML = `
+            <option value="team_chat">👥 Team Chat</option>
+            <option value="omnirouter">⚡ OmniRouter (AI)</option>
+            <option value="add_new_model_trigger" style="color: #4edea3; font-weight: bold;">+ Add Custom Model...</option>
+        `;
+        
+        const keys = Object.keys(window.customModels);
+        if (keys.length === 0) {
+            grid.innerHTML = `<div class="text-[#908fa0] text-sm py-2">No custom APIs bound.</div>`;
+        } else {
+            keys.forEach(name => {
+                // This renders the card correctly under the Model Registry box!
+                grid.innerHTML += `
+                <div class="bg-bg-main p-4 rounded-lg flex justify-between items-center border border-bg-lighter mb-2">
+                   <div>
+                       <span class="text-white font-bold">${name}</span>
+                       <span class="text-xs text-[#908fa0] block">${window.customModels[name].url}</span>
+                   </div>
+                   <button onclick="removeCustomModel('${name}')" class="text-red-400 hover:text-red-300 text-xs font-bold bg-red-500/10 px-3 py-1.5 rounded cursor-pointer">Remove</button>
+                </div>`;
+                select.innerHTML += `<option value="custom:${name}">Custom: ${name}</option>`;
+            });
+        }
+
+        if (window.localModels && window.localModels.length > 0) {
+            window.localModels.forEach(m => {
+                select.innerHTML += `<option value="local:${m}">Local: ${m}</option>`;
+            });
+        }
+    };
+    window.deleteMsg = function(id) {
+        if (window.socket) {
+            const msgEl = document.getElementById(`msg-${id}`);
+            if (msgEl) msgEl.remove();
+            window.socket.emit('delete-msg', id);
         }
     };
 
-    window.stopAi = function() {
-        if (window.socket) window.socket.emit('stop-ai');
-        document.querySelectorAll('.btn-stop-ai').forEach(btn => btn.remove());
+    window.forceStopAI = function() {
+        if (window.socket) {
+            window.socket.emit('stop-ai');
+            document.getElementById('stop-ai-btn').style.display = 'none';
+        }
     };
 
     window.forceSendPrompt = function() {
-        const inputEl = document.getElementById('agent-input');
-        if(!inputEl) return;
-        const prompt = inputEl.value.trim();
+        const input = document.getElementById('agent-input');
+        const select = document.getElementById('agent-model-select');
+        const prompt = input.value.trim();
         if (!prompt) return;
 
         forceSwitchView('workspace');
-        const splash = document.getElementById('hero-splash');
-        if(splash) splash.style.display = 'none';
+        document.getElementById('hero-splash').style.display = 'none';
+        document.getElementById('chat-wrapper').style.display = 'flex';
 
-        const chatBox = document.getElementById('ai-chat-history');
-        const chatWrapper = document.getElementById('chat-wrapper');
-        const codeEditor = document.getElementById('code-editor');
-        const selectedModel = document.getElementById('agent-model-select').value;
+        const chatHistory = document.getElementById('ai-chat-history');
+        const msgId = 'msg-' + Date.now();
 
-        if(chatWrapper) chatWrapper.style.display = 'flex';
-        inputEl.value = '';
-
-        document.querySelectorAll('.btn-stop-ai').forEach(btn => btn.remove());
-
-        const uniqueMsgId = 'msg-' + Date.now() + Math.random().toString(36).substr(2, 5);
-
-        if (selectedModel === 'team_chat') {
-            if(window.socket) window.socket.emit('group-chat-send', { id: uniqueMsgId, msg: prompt });
-            return; 
-        }
-
-        if(chatBox) {
-            chatBox.innerHTML += `
-                <div id="${uniqueMsgId}" class="group self-end p-4 rounded-xl max-w-[85%] text-sm bg-indigo-600/20 border border-indigo-500/30 text-white rounded-br-sm shadow-md relative">
-                    <div class="absolute -top-3 right-0 hidden group-hover:flex gap-1 bg-bg-main border border-bg-lighter rounded-md p-1 shadow-lg z-10">
-                        <button onclick="editMsg('${uniqueMsgId}')" class="text-[#908fa0] hover:text-accent material-symbols-outlined text-[14px]">edit</button>
-                        <button onclick="deleteMsg('${uniqueMsgId}')" class="text-[#908fa0] hover:text-red-400 material-symbols-outlined text-[14px]">delete</button>
-                    </div>
-                    <div id="${uniqueMsgId}-text" class="whitespace-pre-wrap">${prompt}</div>
-                </div>`;
-            
-            const aiMsgId = 'ai-msg-' + Date.now();
-            
-            chatBox.innerHTML += `
-                <div id="${aiMsgId}" class="group self-start p-4 rounded-xl w-[85%] text-sm bg-bg-panel border border-bg-lighter text-white rounded-bl-sm shadow-xl relative">
-                    <div class="absolute -top-3 right-0 hidden group-hover:flex gap-1 bg-bg-main border border-bg-lighter rounded-md p-1 shadow-lg z-10">
-                        <button onclick="editMsg('${aiMsgId}')" class="text-[#908fa0] hover:text-accent material-symbols-outlined text-[14px]">edit</button>
-                        <button onclick="deleteMsg('${aiMsgId}')" class="text-[#908fa0] hover:text-red-400 material-symbols-outlined text-[14px]">delete</button>
-                    </div>
-                    <div class="flex justify-between items-center mb-2 border-b border-gray-800 pb-2">
-                        <strong class="text-accent flex items-center gap-2"><span class="material-symbols-outlined text-[16px]">smart_toy</span> Agent Output</strong>
-                        <button onclick="stopAi()" class="btn-stop-ai text-red-400 hover:bg-red-400/20 px-2 py-0.5 rounded text-xs flex items-center gap-1 border border-red-400/30 transition-colors">
-                            <span class="material-symbols-outlined text-[14px]">stop_circle</span> Stop
-                        </button>
-                    </div>
-                    <div id="${aiMsgId}-text" class="whitespace-pre-wrap font-code text-gray-300">Processing...</div>
-                </div>`;
-            
-            setTimeout(() => { chatBox.scrollTop = chatBox.scrollHeight; }, 50);
-            window.currentAiMsgId = aiMsgId;
-        }
-
-        if (window.socket) {
-            window.socket.off('ai-response');
-            let fullAiContent = "";
-
-            window.socket.on('ai-response', (data) => {
-                const aiContainer = document.getElementById(window.currentAiMsgId + '-text');
-                if (aiContainer) {
-                    if (aiContainer.innerText === 'Processing...') aiContainer.innerText = '';
-                    aiContainer.innerText += data;
-                    fullAiContent += data;
-                    if(chatBox) chatBox.scrollTop = chatBox.scrollHeight;
-
-                    const codeMatch = fullAiContent.match(/```[\w]*\n([\s\S]*?)```/);
-                    if (codeMatch && codeMatch[1]) {
-                        const extractedCode = codeMatch[1].trim();
-                        if (codeEditor && codeEditor.value !== extractedCode) {
-                            codeEditor.value = extractedCode;
-                            window.socket.emit('code-update', extractedCode);
-                        }
-                    }
-                }
-            });
-
-            window.socket.off('ai-done');
-            window.socket.on('ai-done', () => {
-                document.querySelectorAll('.btn-stop-ai').forEach(btn => btn.remove());
-            });
-
-            window.socket.emit('ai-prompt', { 
-                prompt: prompt, 
-                modelSelection: selectedModel, 
-                customModels: window.customModels, 
-                codeContext: codeEditor ? codeEditor.value : "" 
-            });
-        }
-    };
-
-    window.forceCreateFolder = function() {
-        if(!window.socket) return alert("Backend offline.");
-        const folderName = prompt("Enter new folder name (e.g., Project_Alpha):");
-        if (folderName && folderName.trim() !== "") {
-            window.socket.emit('create-folder', folderName.trim());
-        }
-    };
-
-    window.forceUpload = function(event) {
-        if(!window.socket) return alert("Backend offline.");
-        const files = event.target.files;
-        if (!files.length) return;
-        
-        document.getElementById('drive-list').innerHTML = `<div class="text-success text-center p-10 font-bold">Uploading ${files.length} items...</div>`;
-        
-        let filesProcessed = 0;
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            if (file.webkitRelativePath.includes('node_modules') || file.webkitRelativePath.includes('.git')) {
-                filesProcessed++; continue;
+        if (select.value === 'team_chat') {
+            if (window.socket) {
+                window.socket.emit('group-chat-send', { id: msgId, msg: prompt });
             }
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                window.socket.emit('upload-file', { filePath: file.webkitRelativePath || file.name, data: e.target.result });
-                filesProcessed++;
-                if (filesProcessed === files.length) window.socket.emit('refresh-drive');
-            };
-            reader.readAsArrayBuffer(file);
-        }
-        event.target.value = '';
-    };
-
-    window.renderDriveHTML = function(nodes) {
-        const list = document.getElementById('drive-list');
-        if(!list) return;
-        if (nodes.length === 0) {
-            list.innerHTML = `<div class="text-center p-10 text-[#908fa0]">Directory is empty.</div>`;
+            input.value = '';
             return;
         }
-        function build(nArr, padding = 0) {
-            let html = '';
-            nArr.forEach(n => {
-                if (n.type === 'folder') {
-                    html += `
-                    <details class="group mt-2">
-                        <summary class="flex justify-between items-center p-3 bg-bg-main border border-bg-lighter rounded-lg cursor-pointer list-none select-none" style="margin-left: ${padding}px;">
-                            <span class="flex items-center gap-3 font-bold text-white text-sm">
-                                <span class="material-symbols-outlined text-[#908fa0] text-sm transition-transform group-open:rotate-90">chevron_right</span>
-                                <span class="material-symbols-outlined text-warning">folder</span> 
-                                ${n.name}
-                            </span>
-                            <a href="/download-folder/${encodeURIComponent(n.path)}" onclick="event.stopPropagation()" class="text-warning font-bold text-xs uppercase font-code hover:underline bg-warning/10 px-3 py-1 rounded">ZIP</a>
-                        </summary>
-                        <div class="border-l border-gray-800 ml-4 mt-2 mb-2">
-                            ${build(n.children, padding + 15)}
-                        </div>
-                    </details>`;
-                } else {
-                    html += `
-                    <div class="flex justify-between items-center p-3 mt-1 bg-bg-main/50 border border-bg-lighter/50 rounded-lg hover:bg-bg-panel transition-colors" style="margin-left: ${padding}px;">
-                        <span class="flex items-center gap-3 text-[#908fa0] text-sm font-code">
-                            <span class="material-symbols-outlined text-accent text-[18px]">description</span> 
-                            ${n.name}
-                        </span>
-                        <a href="/download/${encodeURIComponent(n.path)}" class="text-success font-bold text-xs font-code hover:underline bg-success/10 px-3 py-1 rounded" download>Download</a>
-                    </div>`;
-                }
+
+        chatHistory.innerHTML += `
+           <div class="flex flex-col items-end mb-3">
+              <div class="bg-accent text-accent-dark px-4 py-2.5 rounded-2xl rounded-tr-none text-sm max-w-xl font-medium shadow-md">${prompt}</div>
+           </div>
+        `;
+        input.value = '';
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+
+        document.getElementById('stop-ai-btn').style.display = 'flex';
+
+        if (window.socket) {
+            window.socket.emit('ai-prompt', {
+                prompt: prompt,
+                modelSelection: select.value,
+                customModels: window.customModels,
+                codeContext: document.getElementById('code-editor').value || ''
             });
-            return html;
         }
-        list.innerHTML = build(nodes);
     };
-
-    window.renderModels();
-    
-    try {
-        window.term = new Terminal({ cursorBlink: true, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", theme: { background: 'transparent', foreground: '#4edea3' } });
-        if (window.FitAddon && window.FitAddon.FitAddon) {
-            window.fitAddon = new window.FitAddon.FitAddon();
-            window.term.loadAddon(window.fitAddon);
-        }
-        const tContainer = document.getElementById('terminal-container');
-        if(tContainer) {
-            window.term.open(tContainer);
-            if (window.socket) {
-                window.socket.on('terminal-output', (data) => window.term.write(data));
-                window.term.onData((data) => window.socket.emit('terminal-input', data));
-            }
-        }
-    } catch(e) {}
-
-    window.addEventListener('resize', () => {
-        if (window.fitAddon) window.fitAddon.fit();
-    });
-
-    if (window.socket) {
-        window.socket.emit('request-local-models');
-        window.socket.on('local-models-list', (models) => {
-            window.localModels = models;
-            window.renderModels();
-        });
-
-        window.socket.on('msg-deleted', (id) => {
-            const el = document.getElementById(id);
-            if(el) el.remove();
-        });
-
-        window.socket.on('msg-edited', (data) => {
-            const textContainer = document.getElementById(data.id + '-text');
-            if(textContainer) textContainer.innerText = data.newText;
-        });
-
-        window.socket.on('group-chat-receive', (data) => {
-            const chatBox = document.getElementById('ai-chat-history');
-            const chatWrapper = document.getElementById('chat-wrapper');
-            const splash = document.getElementById('hero-splash');
-            
-            if(splash) splash.style.display = 'none';
-            if(chatWrapper) chatWrapper.style.display = 'flex';
-            
-            if(chatBox) {
-                const isMe = data.senderId === window.socket.id;
-                const alignment = isMe ? 'self-end bg-blue-600/20 border-blue-500/30 rounded-br-sm' : 'self-start bg-bg-panel border-bg-lighter rounded-bl-sm';
-                
-                chatBox.innerHTML += `
-                    <div id="${data.id}" class="group ${alignment} p-4 rounded-xl max-w-[85%] text-sm border text-white shadow-md relative">
-                        <div class="absolute -top-3 right-0 hidden group-hover:flex gap-1 bg-bg-main border border-bg-lighter rounded-md p-1 shadow-lg z-10">
-                            <button onclick="editMsg('${data.id}')" class="text-[#908fa0] hover:text-accent material-symbols-outlined text-[14px]">edit</button>
-                            <button onclick="deleteMsg('${data.id}')" class="text-[#908fa0] hover:text-red-400 material-symbols-outlined text-[14px]">delete</button>
-                        </div>
-                        <strong class="text-gray-400 block mb-1 text-xs flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">person</span> ${data.sender}</strong>
-                        <div id="${data.id}-text" class="whitespace-pre-wrap">${data.msg}</div>
-                    </div>`;
-                setTimeout(() => { chatBox.scrollTop = chatBox.scrollHeight; }, 50);
-            }
-        });
-
-        window.socket.on('user-list', (users) => {
-            const countEl = document.getElementById('live-user-count');
-            if (countEl) countEl.innerText = users.length;
-
-            const grid = document.getElementById('team-grid');
-            if(!grid) return;
-            grid.innerHTML = '';
-            if(users.length === 0) {
-                grid.innerHTML = '<div class="text-[#908fa0] text-sm col-span-2">You are the only one in this session.</div>';
-                return;
-            }
-            users.forEach(u => {
-                grid.innerHTML += `
-                <div class="bg-bg-panel p-4 rounded-xl flex items-center border border-bg-lighter gap-4">
-                   <div class="w-10 h-10 bg-bg-lighter rounded-full flex items-center justify-center"><span class="material-symbols-outlined text-white">person</span></div>
-                   <div><div class="font-bold text-white">${u.name}</div><div class="text-xs text-success font-code">${u.role}</div></div>
-                </div>`;
-            });
-        });
-        
-        window.socket.on('shared-files-tree', window.renderDriveHTML);
-        
-        const codeEditor = document.getElementById('code-editor');
-        if(codeEditor) {
-            codeEditor.addEventListener('input', () => window.socket.emit('code-update', codeEditor.value));
-            window.socket.on('code-update', (code) => { if (codeEditor.value !== code) codeEditor.value = code; });
-        }
-    }
   </script>
 </body>
 </html>
