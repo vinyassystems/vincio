@@ -46,7 +46,7 @@
 
 ---
 
-## 🚀 Download & Installation Guide
+🚀 Download & Installation Guide
 
 ### Prerequisites
 Before downloading and running Vincio, ensure your system has the following installed:
@@ -54,7 +54,7 @@ Before downloading and running Vincio, ensure your system has the following inst
 * **Git** (For cloning the repository)
 * **Ollama** (Optional, if you want local AI model integration)
 
-### Step-by-Step Installation
+Step-by-Step Installation
 
 Clone the repository
 ```bash
