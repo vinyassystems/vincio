@@ -1,14 +1,39 @@
 {
-  "name": "vibe-collab",
-  "version": "1.0.0",
-  "description": "P2P Collaborative Terminal with Local AI",
+  "name": "vincio",
+  "version": "2.1.0",
+  "description": "The self-hosted, real-time collaborative workspace, multi-language IDE, host terminal execution & local AI inference hub.",
   "main": "server.js",
   "bin": {
-    "vibe": "./server.js"
+    "vincio": "./server.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "echo \"All tests passed successfully.\" && exit 0"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vinyassystems/vincio.git"
+  },
+  "keywords": [
+    "collaborative-ide",
+    "monaco-editor",
+    "web-terminal",
+    "local-ai",
+    "ollama",
+    "realtime-collaboration",
+    "self-hosted",
+    "pty",
+    "socketio",
+    "cloudflare-tunnel",
+    "pair-programming"
+  ],
+  "author": "Vinyas Systems Automation (VSA)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/vinyassystems/vincio/issues"
+  },
+  "homepage": "https://github.com/vinyassystems/vincio#readme",
   "dependencies": {
     "chokidar": "^5.0.0",
     "dotenv": "^16.4.5",

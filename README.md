@@ -1,127 +1,179 @@
 <div align="center">
 
 # Vincio ⚡
-### Real-Time Collaborative Workspace, Terminal Execution, & Local AI Hub
+### Real-Time Collaborative Workspace, Multi-Language IDE, & Local AI Hub
 
-[![VSA Banner](https://img.shields.io/badge/VSA-Vincio-indigo?style=for-the-badge)](https://github.com/vinyassystems/vincio)
-[![License: MIT](https://img.shields.io/badge/License-MIT-success?style=for-the-badge)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-Ready-blue?style=for-the-badge)](https://nodejs.org/)
-[![Status](https://img.shields.io/badge/Status-Active%20Development-orange?style=for-the-badge)]()
+[![GitHub Stars](https://img.shields.io/github/stars/vinyassystems/vincio?style=for-the-badge&logo=github&color=indigo)](https://github.com/vinyassystems/vincio/stargazers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-emerald?style=for-the-badge)](LICENSE)
+[![Node.js Version](https://img.shields.io/badge/Node.js-v18%2B-blue?style=for-the-badge&logo=node.js)](https://nodejs.org/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](Dockerfile)
+[![Ollama Ready](https://img.shields.io/badge/Ollama-Local%20AI-orange?style=for-the-badge&logo=ollama)](https://ollama.com)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge)](CONTRIBUTING.md)
 
-*Engineered and maintained by **Vinyas Systems Automation (VSA)**.*
+<p align="center">
+  <b>The open-source, self-hosted peer-to-peer workspace you actually own.</b><br>
+  Collaborate in real time, write code across 15+ languages in a VS Code-grade IDE, execute terminal commands, and query local AI models without cloud lock-in.
+</p>
+
+[Quick Start](#-quick-start) •
+[Why Vincio?](#-why-vincio-vs-alternatives) •
+[Features](#-core-features) •
+[Architecture](#-system-architecture) •
+[Docker](#-docker-setup) •
+[Roadmap](#-roadmap)
 
 </div>
 
 ---
-## 📖 Overview
 
-Vincio is a self-hosted, lightweight real-time collaborative workspace and development hub. Designed for developers, engineering teams, and creators who want total control over their data, Vincio bridges the gap between Google Docs-style real-time collaboration, a live integrated terminal, and local AI model auto-discovery — all running securely on your own hardware.
+## 💡 Why Vincio vs Alternatives?
+
+| Feature | **Vincio ⚡** | Replit | VS Code Live Share | Code-Server |
+| :--- | :---: | :---: | :---: | :---: |
+| **100% Self-Hosted & Private** | **✅ Full Control** | ❌ Cloud-hosted only | ❌ Microsoft relay | ⚠️ Requires VPS |
+| **Local AI (Ollama) Out-of-the-Box** | **✅ Auto-discovery** | ❌ Paid cloud tokens | ⚠️ Requires plugins | ❌ Manual config |
+| **Multi-Language Monaco Editor** | **✅ Built-in (15+ langs)**| ✅ Built-in | ✅ Built-in | ✅ Built-in |
+| **Instant PTY Host Terminal** | **✅ Interactive bash/pty** | ✅ Cloud shell | ✅ Shared terminal | ✅ Web shell |
+| **1-Click Public Tunnel (Cloudflare)**| **✅ Automatic** | ❌ Paid tier | ❌ Proprietary | ❌ Manual setup |
+| **Accountless Quick Sessions** | **✅ Instant Host PIN** | ❌ Account required | ❌ Account required | ⚠️ Password |
+| **Shared Drive with Tarball Compression** | **✅ Built-in** | ❌ Proprietary storage | ❌ Local filesystem | ❌ Extra plugin |
+| **License / Pricing** | **🆓 100% Free (MIT)** | 💰 \$20+/mo | 🆓 Freemium | 🆓 Open Source |
+
+---
 
 ## ✨ Core Features
 
-- 🤖 **Local AI Auto-Discovery** — Automatically detects local open-source models (via Ollama, like qwen2.5-coder) or allows custom API bindings.
-- ⚡ **Live Code Auto-Sync** — AI-generated code blocks instantly extract and sync across all connected clients via WebSockets in real time.
-- 🖥️ **Host Terminal Integration** — Execute system commands directly from the dashboard, securely protected by admin session control.
-- 👥 **Real-Time Team Hub** — Synchronized live chat, editable/deletable messages, and connected user tracking.
-- 📁 **Integrated Shared Drive** — Manage project assets directly within the interface and download entire directories as ZIP archives instantly.
-- 🔒 **Zero Cloud Lock-in** — Host locally and expose securely via tunnels (such as Cloudflare) without relying on heavy commercial third-party cloud infrastructure.
+* 👁️ **Live Split-Screen App Preview (Bolt.new Style)**: Real-time execution iframe rendered right next to the Monaco Editor. Instantly renders HTML, CSS, JavaScript, interactive Canvas games, and web apps with Desktop (100%) and Mobile (375px) responsive viewport toggles.
+* 💻 **Multi-Language Monaco IDE Engine**: High-performance editor powered by Monaco (VS Code engine). Includes multi-file tabs, live language switching (JS, Python, TS, HTML, CSS, C++, Rust, Go, Bash, SQL, and more), bracket matching, minimap, and auto-formatting.
+* ⚡ **Live Real-Time P2P Code Sync**: Write and edit code together simultaneously with sub-millisecond WebSocket updates.
+* 🖥️ **Host Terminal Execution (`node-pty`)**: Run system processes, compile code, execute scripts, or pull files directly into the editor with `sync <filename>`.
+* 🤖 **Local AI Auto-Discovery & OmniRouter**: Detects local models running via Ollama (`qwen2.5-coder`, `llama3`, `deepseek-coder`, etc.) automatically on `localhost:11434`, plus support for custom OpenAI-compatible API bindings and automatic multi-file generation directly to disk.
+* 🔒 **End-to-End Private 1-on-1 Direct Messaging (DMs)**: Start confidential 1-on-1 chats with any collaborator in the workspace with network-level message isolation.
+* 🌐 **Zero-Config Public Tunneling**: Generates an instant, secure public URL via Cloudflare Tunneling—no router port forwarding or public static IP needed.
+* 👥 **Team Hub & Developer Presence**: Live online user roster with avatars, roles, message editing, and deletion.
+* 📁 **Integrated Shared Drive**: Collaborative asset drive with live folder creation, drag-and-drop file upload, and instant `.tar.gz` archive streaming.
 
-## ⚙️ System Architecture
+---
 
+## 🚀 Quick Start
+
+### Method 1: Instant Launch with NPX (Zero Install!) ⚡
+
+Run Vincio in any folder immediately without cloning or installing:
+
+```bash
+npx vincio
 ```
-[ Client Browsers ] <--- WebSocket / HTTP ---> [ Node.js Express Server ]
-                                                          |
-         +-----------------------+------------------------+
-         |                       |                        |
- [ Local Terminal ]     [ Ollama Local AI ]      [ Shared File Drive ]
+
+Vincio starts immediately, generates a secure 6-digit Host Admin PIN, automatically unlocks your terminal on `http://localhost:8000`, and provides a Cloudflare public link for collaborators.
+
+---
+
+### Method 2: Git & NPM
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/vinyassystems/vincio.git
+cd vincio
+
+# 2. Install dependencies
+npm install
+
+# 3. Start the Vincio Studio server
+npm start
+```
+
+Navigate to **`http://localhost:8000`** in your browser.
+
+---
+
+### Method 2: Docker & Docker Compose 🐳
+
+Run Vincio in an isolated, production-ready container with a single command:
+
+```bash
+docker compose up -d
+```
+
+Or using standard `docker run`:
+
+```bash
+docker build -t vincio .
+docker run -d -p 8000:8000 -v $(pwd)/vincio_shared:/app/vincio_shared --name vincio vincio
 ```
 
 ---
 
-## 🚀 Download & Installation Guide
+## ⚙️ System Architecture
 
-### Prerequisites
-
-Before downloading and running Vincio, ensure your system has the following installed:
-
-- **Node.js** (v18 or higher recommended)
-- **Git** (for cloning the repository)
-- **Ollama** (optional, if you want local AI model integration)
-- **cloudflared** (optional, if you want to expose your local instance securely via a Cloudflare Tunnel) — see install steps below
-
-### Installing cloudflared (optional, for secure remote access)
-
-Vincio can be exposed outside your local network without opening ports, using a Cloudflare Tunnel. Install `cloudflared` for your OS:
-
-**Windows (via winget):**
-
-```bash
-winget install --id Cloudflare.cloudflared
+```text
+               +-------------------------------------------------------+
+               |                  Client Browsers                      |
+               |  (Monaco IDE, xterm.js Terminal, Team Hub & Chat UI)  |
+               +---------------------------+---------------------------+
+                                           | WebSocket / HTTP (Socket.io)
+                                           v
+               +-------------------------------------------------------+
+               |              Vincio Node.js Engine (server.js)        |
+               +-------------+-------------+-------------+-------------+
+                             |             |             |
+        +--------------------+      +------+------+      +--------------------+
+        |                           |             |                           |
+        v                           v             v                           v
++------------------+       +---------------+ +------------------+   +------------------+
+| Host PTY Session |       |  Local Ollama | |  Custom API Hub  |   | Shared File Drive|
+| (bash / node-pty)|       | (11434/v1 API)| | (OpenAI, Groq...) |   | (tar streaming)  |
++------------------+       +---------------+ +------------------+   +------------------+
 ```
 
-**macOS (via Homebrew):**
+---
 
-```bash
-brew install cloudflare/cloudflare/cloudflared
-```
+## ⌨️ Keyboard Shortcuts
 
-**Linux / Ubuntu / WSL:**
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl + Enter` / `Cmd + Enter` | **Run Active File** in Host Terminal |
+| `Ctrl + S` / `Cmd + S` | **Format & Save / Sync** active file |
+| `Ctrl + B` | **Toggle Code Engine Tabs** |
+| `Ctrl + C` | **Copy Active Code** to Clipboard |
 
-```bash
-sudo mkdir -p --parents --mode=0755 /usr/share/keyrings
-curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
-echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
-sudo apt-get update && sudo apt-get install cloudflared
-```
+---
 
-Once installed, you can start a tunnel to your local Vincio server with:
+## 🗺️ Roadmap & Upcoming Features
 
-```bash
-cloudflared tunnel --url http://localhost:8000
-```
+- [x] Multi-Language Monaco IDE with syntax selector & tabs
+- [x] Integrated PTY Host Terminal with quick action triggers
+- [x] Zero-config Cloudflare tunnel auto-hosting
+- [x] Local Ollama model auto-detection
+- [ ] Inline AI code completions (Ghost text / Copilot-style)
+- [ ] Git commit & push GUI tool inside the studio
+- [ ] WebRTC voice channel for peer programming
+- [ ] Plugin extension API
 
-### Step-by-Step Installation
+Want to help build these features? Check out our [Contribution Guide](CONTRIBUTING.md) and submit a pull request!
 
-Vincio runs the same way on **macOS, Windows, and Linux** — the only difference is which terminal you use (Terminal on macOS/Linux, PowerShell or Command Prompt on Windows).
+---
 
-1. **Clone the repository**
+## 🤝 Contributing
 
-   ```bash
-   git clone https://github.com/vinyassystems/vincio.git
-   ```
+Contributions, issues, and feature requests are very welcome!
+Feel free to check the [issues page](https://github.com/vinyassystems/vincio/issues).
 
-2. **Navigate into the project folder**
+1. Star the repo ⭐
+2. Fork the project
+3. Create your feature branch (`git checkout -b feature/awesome-feature`)
+4. Commit your changes (`git commit -m 'feat: add awesome feature'`)
+5. Push to the branch (`git push origin feature/awesome-feature`)
+6. Open a Pull Request
 
-   ```bash
-   cd vincio
-   ```
-
-3. **Install dependencies**
-
-   ```bash
-   npm install
-   ```
-
-4. **Start the application server**
-
-   ```bash
-   npm start
-   ```
-
-5. **Access the workspace**
-
-   Open your web browser and navigate to:
-
-   ```
-   http://localhost:8000
-   ```
-
-   Enter your admin password in the terminal prompt when initializing, and your workspace is fully live!
+---
 
 ## 📄 License
 
-MIT License
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more information.
 
+---
 
-
-
+<div align="center">
+  <b>Built with ❤️ by <a href="https://github.com/vinyassystems">Vinyas Systems Automation (VSA)</a></b>
+</div>

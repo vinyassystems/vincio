@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+.npm/
+
+# Environment and sensitive credentials
+.env
+.vincio-config.json
+*.key
+*.pem
+
+# Backups and logs
+*.bak
+*.log
+npm-debug.log*
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Shared temporary uploads (keep directory structure)
+vincio_shared/*
+!vincio_shared/.gitkeep

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -15,7 +16,7 @@ const server = http.createServer(app);
 const io = new Server(server, { maxHttpBufferSize: 5e7 });
 
 const sharedDir = path.join(process.cwd(), 'vincio_shared');
-if (!fs.existsSync(sharedDir)) fs.mkdirSync(sharedDir);
+if (!fs.existsSync(sharedDir)) fs.mkdirSync(sharedDir, { recursive: true });
 app.use('/download', express.static(sharedDir)); 
 
 app.get('/download-folder/*', (req, res) => {
@@ -50,27 +51,34 @@ let sessionAdminPassword = "";
 let adminUsername = os.userInfo().username;
 
 function initServerStartup() {
+    // 1. Check environment variable override
+    const envPass = process.env.ADMIN_PASSWORD || process.env.VINCIO_PASSWORD;
+    if (envPass) {
+        sessionAdminPassword = envPass.trim();
+        bootUpApp();
+        return;
+    }
+
+    // 2. Check saved persistent configuration
     if (fs.existsSync(CONFIG_PATH)) {
         try {
             const configData = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-            sessionAdminPassword = configData.password;
-            if (configData.username) adminUsername = configData.username;
-            console.log(`[VSA] Loaded saved configuration for admin: ${adminUsername}`);
-            bootUpApp();
-            return;
-        } catch (e) {
-            console.log("[VSA] Config file corrupted, prompting again...");
-        }
+            if (configData.password) {
+                sessionAdminPassword = configData.password;
+                if (configData.username) adminUsername = configData.username;
+                bootUpApp();
+                return;
+            }
+        } catch (e) {}
     }
 
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(`\n🔒 Create an Admin Password for this Vincio session (${adminUsername}): `, (answer) => {
-        sessionAdminPassword = answer.trim() || "admin123";
+    // 3. For npx vincio / headless / zero-friction setup: Auto-generate 6-digit PIN
+    sessionAdminPassword = Math.floor(100000 + Math.random() * 900000).toString();
+    try {
         fs.writeFileSync(CONFIG_PATH, JSON.stringify({ password: sessionAdminPassword, username: adminUsername }, null, 2));
-        console.log(`\n✅ Password set and saved locally successfully!`);
-        rl.close();
-        bootUpApp();
-    });
+    } catch (e) {}
+
+    bootUpApp();
 }
 
 async function getLocalOllamaModels() {
@@ -86,54 +94,131 @@ async function getLocalOllamaModels() {
 
 function buildFileTree(dir) {
     const result = [];
-    const items = fs.readdirSync(dir);
-    for (const item of items) {
-        if (item === '.git' || item === 'node_modules') continue;
-        const itemPath = path.join(dir, item);
-        const stat = fs.statSync(itemPath);
-        const relativePath = itemPath.replace(sharedDir + path.sep, '').replace(/\\/g, '/');
-        
-        if (stat.isDirectory()) {
-            result.push({ name: item, type: 'folder', path: relativePath, children: buildFileTree(itemPath) });
-        } else {
-            result.push({ name: item, type: 'file', path: relativePath });
+    try {
+        const items = fs.readdirSync(dir);
+        for (const item of items) {
+            if (item === '.git' || item === 'node_modules') continue;
+            const itemPath = path.join(dir, item);
+            const stat = fs.statSync(itemPath);
+            const relativePath = itemPath.replace(sharedDir + path.sep, '').replace(/\\/g, '/');
+            
+            if (stat.isDirectory()) {
+                result.push({ name: item, type: 'folder', path: relativePath, children: buildFileTree(itemPath) });
+            } else {
+                result.push({ name: item, type: 'file', path: relativePath });
+            }
         }
-    }
+    } catch(err) {}
     return result;
 }
 
-// Expose current user info to frontend
+// Expose current user & system info to frontend
 app.get('/api/user', (req, res) => {
     res.json({ username: adminUsername });
 });
 
+app.get('/api/system-info', (req, res) => {
+    const isLocal = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' || req.hostname === 'localhost';
+    res.json({
+        username: adminUsername,
+        tunnelUrl: currentCloudflareLink,
+        platform: os.platform(),
+        arch: os.arch(),
+        uptime: Math.floor(process.uptime()),
+        nodeVersion: process.version,
+        isLocalHost: isLocal,
+        adminPin: isLocal ? sessionAdminPassword : null
+    });
+});
+
 io.on('connection', (socket) => {
-    activeUsers[socket.id] = { id: socket.id, name: `Guest-${guestCounter++}`, role: 'guest' };
+    activeUsers[socket.id] = { 
+        id: socket.id, 
+        name: `Dev-${guestCounter++}`, 
+        title: 'Software Engineer',
+        avatar: 'bolt',
+        status: 'In the zone',
+        github: '',
+        role: 'guest' 
+    };
     io.emit('user-list', Object.values(activeUsers));
     
-    socket.emit('terminal-output', '\r\n[System] Vincio Environment Connected. Type "sync <filename>" to pull any file into the workspace.\r\n> ');
+    socket.emit('terminal-output', '\r\n[System] Vincio Studio Connected. Type "sync <filename>" to pull local files into the editor.\r\n> ');
+    
+    // Send active tunnel link to connecting client
+    if (currentCloudflareLink && currentCloudflareLink.startsWith('http')) {
+        socket.emit('tunnel-url', currentCloudflareLink);
+    }
 
     socket.on('request-local-models', async () => {
         const models = await getLocalOllamaModels();
         socket.emit('local-models-list', models);
     });
 
-    socket.on('update-profile', (newName) => {
+    socket.on('update-profile', (profileData) => {
         if (activeUsers[socket.id]) {
-            activeUsers[socket.id].name = newName;
+            if (typeof profileData === 'string') {
+                activeUsers[socket.id].name = profileData;
+            } else if (typeof profileData === 'object') {
+                activeUsers[socket.id] = {
+                    ...activeUsers[socket.id],
+                    ...profileData
+                };
+            }
             io.emit('user-list', Object.values(activeUsers));
         }
     });
 
     socket.on('group-chat-send', (data) => {
-        const senderInfo = activeUsers[socket.id] || { name: 'Unknown', role: 'guest' };
+        const senderInfo = activeUsers[socket.id] || { 
+            name: 'Unknown', 
+            role: 'guest', 
+            title: 'Developer', 
+            avatar: 'bolt', 
+            status: 'Active', 
+            github: '' 
+        };
         io.emit('group-chat-receive', { 
             id: data.id,
             sender: senderInfo.name, 
             role: senderInfo.role, 
+            title: senderInfo.title || 'Developer',
+            avatar: senderInfo.avatar || 'bolt',
+            status: senderInfo.status || 'Active',
+            github: senderInfo.github || '',
             msg: data.msg,
             senderId: socket.id
         });
+    });
+
+    // End-to-End Private 1-on-1 Direct Messaging (Only sender and recipient receive this)
+    socket.on('private-chat-send', (data) => {
+        if (!data || !data.recipientId || !data.msg) return;
+        const senderInfo = activeUsers[socket.id] || { 
+            name: 'Anonymous', 
+            role: 'guest', 
+            title: 'Developer', 
+            avatar: 'bolt', 
+            status: 'Active', 
+            github: '' 
+        };
+        const dmPayload = {
+            id: data.id || 'dm-' + Date.now(),
+            sender: senderInfo.name,
+            role: senderInfo.role,
+            title: senderInfo.title || 'Developer',
+            avatar: senderInfo.avatar || 'bolt',
+            status: senderInfo.status || 'Active',
+            github: senderInfo.github || '',
+            msg: data.msg,
+            senderId: socket.id,
+            recipientId: data.recipientId,
+            timestamp: new Date().toISOString()
+        };
+
+        // Strictly deliver to recipient socket and echo back to sender socket
+        io.to(data.recipientId).emit('private-chat-receive', dmPayload);
+        socket.emit('private-chat-receive', dmPayload);
     });
 
     socket.on('edit-msg', (data) => {
@@ -151,7 +236,6 @@ io.on('connection', (socket) => {
     socket.on('authenticate', (token, callback) => {
         if (token === sessionAdminPassword) { 
             activeUsers[socket.id].role = 'admin';
-            activeUsers[socket.id].name = `${adminUsername} (Admin)`;
             io.emit('user-list', Object.values(activeUsers)); 
             callback({ success: true });
         } else {
@@ -211,42 +295,132 @@ io.on('connection', (socket) => {
         io.emit('shared-files-tree', buildFileTree(sharedDir));
     });
 
-    socket.on('ai-prompt', async ({ prompt, modelSelection, customModels, codeContext }) => {
+    // Auto-save generated files directly to host project workspace
+    socket.on('save-workspace-file', ({ filename, content }, callback) => {
+        if (!filename || typeof content !== 'string') return;
+        try {
+            const safeName = path.basename(filename);
+            const targetPath = path.join(process.cwd(), safeName);
+            fs.writeFileSync(targetPath, content, 'utf8');
+            console.log(`[Workspace Auto-Write] Saved ${safeName} (${content.length} bytes) to disk`);
+            if (callback) callback({ success: true, filename: safeName, path: targetPath });
+            io.emit('workspace-file-saved', { filename: safeName });
+        } catch (err) {
+            console.error(`[Workspace Auto-Write Error] ${filename}:`, err.message);
+            if (callback) callback({ success: false, error: err.message });
+        }
+    });
+
+    // Execute script file directly in live terminal process
+    socket.on('execute-terminal-file', ({ filename }) => {
+        if (!filename) return;
+        const safeName = path.basename(filename);
+        const ext = safeName.split('.').pop().toLowerCase();
+        let cmd = '';
+        if (ext === 'py') cmd = `python3 ${safeName}\n`;
+        else if (ext === 'js') cmd = `node ${safeName}\n`;
+        else if (ext === 'sh') cmd = `bash ${safeName}\n`;
+        else if (ext === 'html') cmd = `echo "File saved: ${safeName}. Available in workspace"\n`;
+        else cmd = `./${safeName}\n`;
+        
+        if (cmd && ptyProcess) {
+            ptyProcess.write(cmd);
+        }
+    });
+
+    socket.on('ai-prompt', async ({ prompt, modelSelection, customModels, apiKeys = {}, codeContext }) => {
         activeAiStreams[socket.id] = true;
         let queue = [];
+        const localModels = await getLocalOllamaModels();
         
-        if (modelSelection === 'omnirouter') {
-            Object.keys(customModels).forEach(name => {
-                queue.push({ type: 'custom', name: name, baseUrl: customModels[name].url, apiKey: customModels[name].key });
+        if (!modelSelection || modelSelection === 'omnirouter' || modelSelection === 'team_chat') {
+            Object.keys(customModels || {}).forEach(name => {
+                queue.push({ type: 'custom', name: name, baseUrl: customModels[name].url, apiKey: customModels[name].key || 'custom' });
             });
-            const localModels = await getLocalOllamaModels();
+            if (apiKeys.deepseek) queue.push({ type: 'cloud', name: 'deepseek-chat', baseUrl: 'https://api.deepseek.com', apiKey: apiKeys.deepseek });
+            if (apiKeys.openai) queue.push({ type: 'cloud', name: 'gpt-4o-mini', baseUrl: 'https://api.openai.com/v1', apiKey: apiKeys.openai });
+            if (apiKeys.groq) queue.push({ type: 'cloud', name: 'llama-3.3-70b-versatile', baseUrl: 'https://api.groq.com/openai/v1', apiKey: apiKeys.groq });
+            if (apiKeys.gemini) queue.push({ type: 'cloud', name: 'gemini-2.0-flash', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/', apiKey: apiKeys.gemini });
+            if (apiKeys.openrouter) queue.push({ type: 'cloud', name: 'anthropic/claude-3.5-sonnet', baseUrl: 'https://openrouter.ai/api/v1', apiKey: apiKeys.openrouter });
+
             localModels.forEach(name => {
                 queue.push({ type: 'local', name: name, baseUrl: 'http://127.0.0.1:11434/v1', apiKey: 'local' });
             });
-            if (queue.length === 0) return socket.emit('ai-response', '❌ No models configured.');
+
+            if (queue.length === 0) {
+                socket.emit('ai-response', '💡 **No AI Model Available**\n\nTo use Vincio AI Studio:\n1. Ensure Ollama is running (`ollama run qwen2.5-coder:1.5b`)\n2. Or select a model and configure an API key (DeepSeek, OpenAI, Groq, OpenRouter) via the bottom **Model Selector**.');
+                socket.emit('ai-done');
+                return;
+            }
         } else if (modelSelection.startsWith('local:')) {
             const name = modelSelection.replace('local:', '');
             queue.push({ type: 'local', name: name, baseUrl: 'http://127.0.0.1:11434/v1', apiKey: 'local' });
+        } else if (modelSelection.startsWith('cloud:')) {
+            const parts = modelSelection.split(':');
+            const provider = parts[1];
+            const modelName = parts.slice(2).join(':');
+
+            const keyMap = {
+                deepseek: { key: apiKeys.deepseek || process.env.DEEPSEEK_API_KEY, url: 'https://api.deepseek.com', name: 'DeepSeek' },
+                openai: { key: apiKeys.openai || process.env.OPENAI_API_KEY, url: 'https://api.openai.com/v1', name: 'OpenAI' },
+                groq: { key: apiKeys.groq || process.env.GROQ_API_KEY, url: 'https://api.groq.com/openai/v1', name: 'Groq' },
+                gemini: { key: apiKeys.gemini || process.env.GEMINI_API_KEY, url: 'https://generativelanguage.googleapis.com/v1beta/openai/', name: 'Google Gemini' },
+                openrouter: { key: apiKeys.openrouter || process.env.OPENROUTER_API_KEY, url: 'https://openrouter.ai/api/v1', name: 'OpenRouter' }
+            };
+
+            const provCfg = keyMap[provider];
+            if (provCfg) {
+                if (!provCfg.key) {
+                    socket.emit('ai-response', `⚠️ **${provCfg.name} API Key Missing**\n\nPlease add your API key by opening the bottom **Model Selector** -> **⚙️ API Keys & Models**.\n*(Stored locally in your browser).*`);
+                    socket.emit('ai-done');
+                    return;
+                }
+                queue.push({ type: 'cloud', name: modelName, baseUrl: provCfg.url, apiKey: provCfg.key });
+            } else {
+                queue.push({ type: 'cloud', name: modelName, baseUrl: 'https://openrouter.ai/api/v1', apiKey: apiKeys.openrouter || 'missing' });
+            }
         } else if (modelSelection.startsWith('custom:')) {
             const name = modelSelection.replace('custom:', '');
-            queue.push({ type: 'custom', name: name, baseUrl: customModels[name].url, apiKey: customModels[name].key });
+            if (customModels && customModels[name]) {
+                queue.push({ type: 'custom', name: name, baseUrl: customModels[name].url, apiKey: customModels[name].key || 'custom' });
+            }
+        }
+
+        if (queue.length === 0) {
+            socket.emit('ai-response', '⚠️ The selected model could not be found or loaded.');
+            socket.emit('ai-done');
+            return;
         }
 
         let success = false;
+        let lastErr = '';
         for (let i = 0; i < queue.length; i++) {
             if (!activeAiStreams[socket.id]) break;
 
             const target = queue[i];
-            socket.emit('omnirouter-status', `⚡ Processing via [${target.name}]`);
+            socket.emit('omnirouter-status', `⚡ Streaming via [${target.name}]`);
+            socket.emit('ai-active-model', { name: target.name, type: target.type });
             
-            // Increased timeout to 60 seconds so local models don't time out
             const client = new OpenAI({ baseURL: target.baseUrl, apiKey: target.apiKey, timeout: 60000 });
             
             try {
                 const stream = await client.chat.completions.create({
                     model: target.name,
                     messages: [
-                        { role: 'system', content: `Context: ${codeContext}` },
+                        { role: 'system', content: `You are Vincio AI, an autonomous software architect and developer.
+When the user asks you to build, create, refactor, or fix code or a project:
+1. ALWAYS clearly label each file above its code block using this exact markdown header:
+   ### filename.ext
+   \`\`\`language
+   // Complete code here
+   \`\`\`
+2. Write full, production-ready, working code. Never skip lines or use placeholder comments.
+3. If dependencies or a terminal execution command is needed, provide a separate bash block:
+   \`\`\`bash
+   python3 filename.py
+   \`\`\`
+Context code:
+${codeContext || ''}` },
                         { role: 'user', content: prompt }
                     ],
                     stream: true
@@ -254,7 +428,7 @@ io.on('connection', (socket) => {
                 let chunkReceived = false;
                 for await (const chunk of stream) {
                     if (!activeAiStreams[socket.id]) {
-                        socket.emit('ai-response', '\n\n[🛑 Generation Paused]');
+                        socket.emit('ai-response', '\n\n*(Generation stopped)*');
                         break;
                     }
                     const content = chunk.choices[0]?.delta?.content || '';
@@ -270,10 +444,14 @@ io.on('connection', (socket) => {
                 }
             } catch (err) {
                 console.error(`[AI Error] [${target.name}] Failed:`, err.message);
-                socket.emit('omnirouter-status', `⚠️ [${target.name}] Failed: ${err.message}. Trying next...`);
+                lastErr = err.message;
+                socket.emit('omnirouter-status', `⚠️ [${target.name}] failed: ${err.message}. Trying next fallback...`);
             }
         }
-        if (!success && activeAiStreams[socket.id]) socket.emit('ai-response', `\r\n❌ All models failed.`);
+        if (!success && activeAiStreams[socket.id]) {
+            socket.emit('ai-response', `\n\n❌ **Execution Error:** ${lastErr || 'Model connection failed'}.\n*Please verify that Ollama is running locally (\`ollama serve\`) or check your API key.*`);
+            socket.emit('ai-done');
+        }
     });
 
     socket.on('disconnect', () => {
@@ -296,19 +474,33 @@ ptyProcess.onData((data) => {
     io.emit('terminal-output', data);
 });
 
-const PORT = 8000;
+const PORT = process.env.PORT || 8000;
 
 function bootUpApp() {
     server.listen(PORT, () => {
-        console.log(`✅ Vincio live at http://localhost:${PORT} (Admin User: ${adminUsername})`);
+        console.log(`
+┌────────────────────────────────────────────────────────┐
+│                   🚀  VINCIO STUDIO                    │
+├────────────────────────────────────────────────────────┤
+│  Local URL:    http://localhost:${PORT}                    │
+│  Admin PIN:    \x1b[32m\x1b[1m${sessionAdminPassword}\x1b[0m (Use to unlock terminal)       │
+│  Admin User:   ${adminUsername}
+│  Workspace:    ${process.cwd()}
+└────────────────────────────────────────────────────────┘
+        `);
         
         try {
             const cloudflare = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${PORT}`]);
             cloudflare.stderr.on('data', (data) => {
-                const match = data.toString().match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
-                if (match) {
-                    currentCloudflareLink = match[0];
-                    console.log(`[AUTO-HOST] Public Link: ${currentCloudflareLink}\n`);
+                const str = data.toString();
+                const matches = str.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/g);
+                if (matches) {
+                    const validTunnel = matches.find(url => !url.includes('api.trycloudflare.com'));
+                    if (validTunnel) {
+                        currentCloudflareLink = validTunnel;
+                        io.emit('tunnel-url', currentCloudflareLink);
+                        console.log(`[AUTO-HOST] Public Link: ${currentCloudflareLink}\n`);
+                    }
                 }
             });
             cloudflare.on('error', () => {

@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  vincio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vinyassystems/vincio:latest
+    container_name: vincio-studio
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=production
+      - PORT=8000
+    volumes:
+      - ./vincio_shared:/app/vincio_shared
+      - vincio_config:/app/.config
+    networks:
+      - vincio-net
+
+  # Optional local Ollama AI container service
+  # Uncomment if you want an all-in-one local AI environment!
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: vincio-ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_models:/root/.ollama
+  #   networks:
+  #     - vincio-net
+
+volumes:
+  vincio_config:
+  # ollama_models:
+
+networks:
+  vincio-net:
+    driver: bridge
