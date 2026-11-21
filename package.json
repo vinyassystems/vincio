@@ -1,9 +1,10 @@
 {
-  "name": "vincio",
+  "name": "vincio-studio",
   "version": "2.1.0",
   "description": "The self-hosted, real-time collaborative workspace, multi-language IDE, host terminal execution & local AI inference hub.",
   "main": "server.js",
   "bin": {
+    "vincio-studio": "./server.js",
     "vincio": "./server.js"
   },
   "scripts": {
